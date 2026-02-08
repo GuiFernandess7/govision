@@ -1,3 +1,3 @@
-## Govision: Software for detecting objects in images and videos. 
+## Govision: Scalable, Event-Driven Object Detection Pipeline using Go, RabbitMQ and Roboflow 
 
-### Microservice architeture: Built with golang
+

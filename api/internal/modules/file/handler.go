@@ -2,20 +2,32 @@ package file
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
+	"time"
 
+	"govision/services/rabbitmq"
 	storage "govision/services/storage"
+
+	"github.com/oklog/ulid/v2"
 
 	"github.com/labstack/echo/v4"
 )
 
 const HOST_IMAGE_URL = "https://api.imgbb.com/1/upload"
 
-func UploadFileImage(c echo.Context) error {
+type Handler struct {
+	publisher rabbitmq.JobPublisher
+}
+
+func NewHandler(p rabbitmq.JobPublisher) *Handler {
+	return &Handler{publisher: p}
+}
+
+func (h *Handler) UploadFileImage(c echo.Context) error {
 	log.Println("[STARTING] - calling route /image/upload...")
 	var request UploadRequest
 
@@ -91,9 +103,19 @@ func UploadFileImage(c echo.Context) error {
 		})
 	}
 
-	fmt.Println("RESULTADO: ", responseObj)
-	log.Printf("[SUCCESS] - File image read successfully!")
-	return c.JSON(http.StatusOK, map[string]any{
-		"message": fmt.Sprintf("image file read successfully: %v", responseObj.Data.URL),
+	entropy := ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+	jobID := ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+	ctx := c.Request().Context()
+
+	if err := h.publisher.Publish(ctx, jobID, responseObj.Data.URL); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": "failed to enqueue job",
+		})
+	}
+
+	log.Printf("[SUCCESS] - File image processed successfully!")
+	return c.JSON(http.StatusAccepted, map[string]string{
+		"job_id": jobID,
+		"status": "queued",
 	})
 }
