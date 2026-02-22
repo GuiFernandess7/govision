@@ -67,6 +67,9 @@ The decoupled architecture enables multiple workers to consume the queue and pro
 
 ### Processing Flow
 
+![WhatsApp Image 2026-02-22 at 16 26 59](https://github.com/user-attachments/assets/604a297b-33eb-4ce6-9976-f94282c4c74b)
+
+
 1. **Request**: Client sends image via POST multipart/form-data
 2. **Validation**:
    - Max size: 5MB
