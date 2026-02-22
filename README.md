@@ -8,7 +8,9 @@
 
 GoVision is an event-driven object detection platform designed to process images asynchronously and at scale. The system leverages machine learning models through the Roboflow API to analyze objects in images with high throughput and reliability.
 
-This repository contains the **Image Upload API**, the first service in the GoVision pipeline, responsible for receiving image uploads, storing them, and enqueueing processing jobs for downstream services.
+This repository contains:
+- **Upload API** — receives image uploads, stores them and enqueues processing jobs
+- **Processing Worker** — consumes the queue, sends images to Roboflow for inference and returns detection results
 
 ---
 
@@ -57,12 +59,25 @@ The decoupled architecture enables multiple workers to consume the queue and pro
               │
               ▼
        ┌─────────────────┐
-       │  RabbitMQ Queue │
-       │   (image_jobs)  │
-       └─────────────────┘
+       │  RabbitMQ Queue  │
+       │   (image_jobs)   │
+       └──────┬──────────┘
               │
               ▼
-       [Next pipeline services]
+       ┌─────────────────┐
+       │  Worker          │
+       │  (Consumer)      │
+       └──────┬──────────┘
+              │
+              ├──► Download image from URL
+              │
+              └──► Send to Roboflow API
+                     │
+                     ▼
+              ┌──────────────────┐
+              │  Detection       │
+              │  Results (JSON)  │
+              └──────────────────┘
 ```
 
 ### Processing Flow
@@ -121,7 +136,7 @@ curl -X POST http://localhost:8080/v1/image/upload \
 
 ### Environment Variables
 
-Create a `.env` file in the `api/` directory:
+Create a `.env` file in the project root:
 
 ```env
 # Server
@@ -133,34 +148,46 @@ STORAGE_API_KEY=your_imgbb_api_key_here
 # Message Queue (RabbitMQ)
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 RABBITMQ_QUEUE=image_jobs
+
+# Roboflow (Object Detection)
+ROBOFLOW_API_KEY=your_roboflow_api_key_here
+ROBOFLOW_MODEL=your-project/1
 ```
 
 ### Dependencies
 
 ```bash
-cd api
 go mod download
 ```
 
 ---
 
-## Running the API
+## Running
 
 ### Local Development
 
+**API:**
 ```bash
-cd api
-go run cmd/app/server.go
+go run ./api/cmd/server.go
 ```
 
 The API will be available at `http://localhost:8080`
 
+**Worker:**
+```bash
+go run ./worker/cmd/main.go
+```
+
 ### Production Build
 
 ```bash
-cd api
-go build -o bin/govision-api cmd/app/server.go
+# API
+go build -o bin/govision-api ./api/cmd/server.go
 ./bin/govision-api
+
+# Worker
+go build -o bin/govision-worker ./worker/cmd/main.go
+./bin/govision-worker
 ```
 
 ### Docker (Future)
@@ -174,29 +201,51 @@ docker-compose up -d
 ## Project Structure
 
 ```
-api/
-├── cmd/app/
-│   └── server.go              # Application entry point
-├── internal/
-│   ├── modules/file/          # File upload module
-│   │   ├── handler.go         # HTTP handler
-│   │   ├── types.go           # DTOs
-│   │   └── validator.go       # Validations
-│   ├── middlewares/           # HTTP middlewares
-│   │   └── security.go
-│   └── routes/                # Route definitions
-│       └── routes.go
-├── services/
-│   ├── rabbitmq/              # RabbitMQ client
-│   │   ├── connection.go
-│   │   ├── interface.go
-│   │   └── publish.go
-│   └── storage/               # Storage service
-│       └── getImageUrl.go
-├── pkg/utils/                 # Reusable utilities
-│   └── sendRequest.go
-├── go.mod
-└── go.sum
+govision/
+├── .env                          # Shared environment variables
+├── go.mod                        # Unified Go module
+├── go.sum
+├── LICENSE
+├── README.md
+├── api/
+│   ├── cmd/
+│   │   └── server.go             # API entry point
+│   ├── internal/
+│   │   ├── middlewares/
+│   │   │   └── security.go       # HTTP security middlewares
+│   │   ├── modules/
+│   │   │   └── file/
+│   │   │       ├── handler.go    # HTTP handler
+│   │   │       ├── service.go    # Upload business logic
+│   │   │       ├── types.go      # DTOs
+│   │   │       └── validator.go  # File validations
+│   │   └── routes/
+│   │       └── routes.go         # Route definitions
+│   ├── pkg/
+│   │   └── utils/
+│   │       └── sendRequest.go    # HTTP request utility
+│   └── services/
+│       ├── rabbitmq/
+│       │   ├── connection.go     # RabbitMQ connection
+│       │   ├── interface.go      # Publisher interface
+│       │   └── publish.go        # Job publisher
+│       └── storage/
+│           └── getImageUrl.go    # ImgBB storage client
+└── worker/
+    ├── cmd/
+    │   └── main.go               # Worker entry point
+    └── internal/
+        ├── domain/
+        │   ├── job.go            # Job message type
+        │   └── prediction.go     # Roboflow response types
+        ├── services/
+        │   ├── rabbitmq/
+        │   │   ├── connection.go # RabbitMQ connection
+        │   │   └── consumer.go   # Queue consumer
+        │   └── roboflow/
+        │       └── roboflow.go   # Roboflow API client
+        └── worker/
+            └── worker.go         # Job processing logic
 ```
 
 ---
@@ -221,14 +270,11 @@ When an upload succeeds, the API publishes a message in the format:
 
 ## Pipeline Roadmap
 
-This is the **first service** in the GoVision pipeline. Upcoming components include:
-
-1. ✅ **Upload API** (This service)
-2. ⏳ **Processing Worker**: RabbitMQ consumer that processes images
-3. ⏳ **Detection Service**: Roboflow integration for object detection
-4. ⏳ **Results API**: Query job status and results
-5. ⏳ **Results Storage**: Persist detections (PostgreSQL/MongoDB)
-6. ⏳ **Dashboard**: Web interface for results visualization
+1. ✅ **Upload API** — Image reception, validation, storage and job enqueueing
+2. ✅ **Processing Worker** — RabbitMQ consumer with Roboflow integration
+3. ⏳ **Results API** — Query job status and detection results
+4. ⏳ **Results Storage** — Persist detections (PostgreSQL/MongoDB)
+5. ⏳ **Dashboard** — Web interface for results visualization
 
 The event-driven architecture allows each service to be developed, tested, and scaled independently.
 
