@@ -9,9 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"govision/worker/internal/repository/postgres"
 	"govision/worker/internal/services/rabbitmq"
 	"govision/worker/internal/services/roboflow"
 	"govision/worker/internal/worker"
+
+	pgconn "govision/worker/internal/services/postgres"
 
 	"github.com/joho/godotenv"
 )
@@ -24,6 +27,7 @@ func main() {
 	rabbitQueueString := os.Getenv("RABBITMQ_QUEUE")
 	roboflowAPIKey := os.Getenv("ROBOFLOW_API_KEY")
 	roboflowModel := os.Getenv("ROBOFLOW_MODEL")
+	databaseURL := os.Getenv("DATABASE_URL")
 
 	if rabbitConnString == "" || rabbitQueueString == "" {
 		log.Printf("[ERROR] - Environment variables not found.")
@@ -34,6 +38,25 @@ func main() {
 		log.Printf("[ERROR] - Roboflow environment variables not found.")
 		panic(errors.New("ROBOFLOW_API_KEY and ROBOFLOW_MODEL must be set"))
 	}
+
+	if databaseURL == "" {
+		log.Printf("[ERROR] - DATABASE_URL environment variable not found.")
+		panic(errors.New("DATABASE_URL must be set"))
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// PostgreSQL connection
+	pool, err := pgconn.NewConnection(ctx, databaseURL)
+	if err != nil {
+		log.Printf("[ERROR] - PostgreSQL connection error: %v", err)
+		panic(err)
+	}
+	defer pool.Close()
+
+	// Repository
+	predictionRepo := postgres.NewPredictionRepository(pool)
 
 	// RabbitMQ connection
 	rabbitMQConnection, err := rabbitmq.NewRabbittMQConnection(rabbitConnString)
@@ -53,9 +76,6 @@ func main() {
 	// Consumer
 	consumer := rabbitmq.NewRabbitMQConsumer(ch, rabbitQueueString)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
 	msgs, err := consumer.Consume(ctx)
 	if err != nil {
 		log.Printf("[ERROR] - Failed to start consuming: %v", err)
@@ -66,7 +86,7 @@ func main() {
 	rfClient := roboflow.NewClient(roboflowAPIKey, roboflowModel)
 
 	// Worker
-	w := worker.New(rfClient)
+	w := worker.New(rfClient, predictionRepo)
 
 	fmt.Println("Successfully connected to RabbitMQ instance")
 	fmt.Println("[*] - Waiting for messages")

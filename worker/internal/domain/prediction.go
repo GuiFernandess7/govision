@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 type Prediction struct {
 	X          float64 `json:"x"`
 	Y          float64 `json:"y"`
@@ -12,4 +14,14 @@ type Prediction struct {
 
 type RoboflowResponse struct {
 	Predictions []Prediction `json:"predictions"`
+}
+
+// JobResult represents a completed job with its predictions,
+// ready to be persisted in the database.
+type JobResult struct {
+	JobID       string
+	ImageURL    string
+	Status      string
+	ProcessedAt time.Time
+	Predictions []Prediction
 }

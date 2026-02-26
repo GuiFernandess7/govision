@@ -5,22 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"time"
 
 	"govision/worker/internal/domain"
+	"govision/worker/internal/repository"
 	"govision/worker/internal/services/roboflow"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // Worker processes jobs from the RabbitMQ queue by sending images
-// to the Roboflow API for inference.
+// to the Roboflow API for inference and persisting results to the database.
 type Worker struct {
 	roboflow *roboflow.Client
+	repo     repository.PredictionRepository
 }
 
-// New creates a new Worker with the given Roboflow client.
-func New(rf *roboflow.Client) *Worker {
-	return &Worker{roboflow: rf}
+// New creates a new Worker with the given Roboflow client and prediction repository.
+func New(rf *roboflow.Client, repo repository.PredictionRepository) *Worker {
+	return &Worker{roboflow: rf, repo: repo}
 }
 
 // ProcessMessages listens for incoming AMQP deliveries, decodes the
@@ -67,8 +70,22 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		return
 	}
 
+	jobResult := domain.JobResult{
+		JobID:       job.JobID,
+		ImageURL:    job.ImageURL,
+		Status:      "completed",
+		ProcessedAt: time.Now(),
+		Predictions: result.Predictions,
+	}
+
+	if err := w.repo.SaveJobResult(ctx, jobResult); err != nil {
+		log.Printf("[WORKER] - Job %s: failed to save results to database: %v", job.JobID, err)
+		_ = msg.Nack(false, true)
+		return
+	}
+
 	resultJSON, _ := json.MarshalIndent(result, "", "  ")
-	log.Printf("[WORKER] - Job %s completed. Result:\n%s", job.JobID, string(resultJSON))
+	log.Printf("[WORKER] - Job %s completed and saved. Result:\n%s", job.JobID, string(resultJSON))
 
 	_ = msg.Ack(false)
 }
