@@ -26,7 +26,8 @@ func main() {
 	rabbitConnString := os.Getenv("RABBITMQ_URL")
 	rabbitQueueString := os.Getenv("RABBITMQ_QUEUE")
 	roboflowAPIKey := os.Getenv("ROBOFLOW_API_KEY")
-	roboflowModel := os.Getenv("ROBOFLOW_MODEL")
+	roboflowWorkspaceID := os.Getenv("ROBOFLOW_WORKSPACE_ID")
+	roboflowWorkflowID := os.Getenv("ROBOFLOW_WORKFLOW_ID")
 	databaseURL := os.Getenv("DATABASE_URL")
 
 	if rabbitConnString == "" || rabbitQueueString == "" {
@@ -34,9 +35,9 @@ func main() {
 		panic(errors.New("environment variables not found"))
 	}
 
-	if roboflowAPIKey == "" || roboflowModel == "" {
+	if roboflowAPIKey == "" || roboflowWorkspaceID == "" || roboflowWorkflowID == "" {
 		log.Printf("[ERROR] - Roboflow environment variables not found.")
-		panic(errors.New("ROBOFLOW_API_KEY and ROBOFLOW_MODEL must be set"))
+		panic(errors.New("ROBOFLOW_API_KEY, ROBOFLOW_WORKSPACE_ID and ROBOFLOW_WORKFLOW_ID must be set"))
 	}
 
 	if databaseURL == "" {
@@ -86,7 +87,7 @@ func main() {
 	}
 
 	// Roboflow client
-	rfClient := roboflow.NewClient(roboflowAPIKey, roboflowModel)
+	rfClient := roboflow.NewClient(roboflowAPIKey, roboflowWorkspaceID, roboflowWorkflowID)
 
 	// Worker
 	w := worker.New(rfClient, predictionRepo)

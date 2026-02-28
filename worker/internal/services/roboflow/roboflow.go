@@ -3,7 +3,6 @@ package roboflow
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,16 +25,33 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("roboflow returned status %d: %s", e.StatusCode, e.Body)
 }
 
-type Client struct {
-	apiKey     string
-	model      string
-	httpClient *http.Client
+// inferRequest represents the JSON body sent to the Roboflow Workflows API.
+type inferRequest struct {
+	APIKey string      `json:"api_key"`
+	Inputs inferInputs `json:"inputs"`
 }
 
-func NewClient(apiKey, model string) *Client {
+type inferInputs struct {
+	Image inferImage `json:"image"`
+}
+
+type inferImage struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+type Client struct {
+	apiKey      string
+	workspaceID string
+	workflowID  string
+	httpClient  *http.Client
+}
+
+func NewClient(apiKey, workspaceID, workflowID string) *Client {
 	return &Client{
-		apiKey: apiKey,
-		model:  model,
+		apiKey:      apiKey,
+		workspaceID: workspaceID,
+		workflowID:  workflowID,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
@@ -43,16 +59,9 @@ func NewClient(apiKey, model string) *Client {
 }
 
 func (c *Client) Detect(ctx context.Context, imageURL string) (*domain.RoboflowResponse, error) {
-	log.Printf("[ROBOFLOW] - Downloading image from URL: %s", imageURL)
+	log.Printf("[ROBOFLOW] - Sending image URL to Roboflow: %s", imageURL)
 
-	imageBytes, err := c.downloadImage(ctx, imageURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download image: %w", err)
-	}
-
-	log.Printf("[ROBOFLOW] - Image downloaded (%d bytes). Sending to Roboflow...", len(imageBytes))
-
-	result, err := c.infer(ctx, imageBytes)
+	result, err := c.infer(ctx, imageURL)
 	if err != nil {
 		return nil, fmt.Errorf("roboflow inference failed: %w", err)
 	}
@@ -61,62 +70,33 @@ func (c *Client) Detect(ctx context.Context, imageURL string) (*domain.RoboflowR
 	return result, nil
 }
 
-func (c *Client) downloadImage(ctx context.Context, imageURL string) ([]byte, error) {
-	type result struct {
-		data []byte
-		err  error
-	}
-
-	ch := make(chan result, 1)
-
-	go func() {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
-		if err != nil {
-			ch <- result{err: err}
-			return
-		}
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			ch <- result{err: err}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			ch <- result{err: fmt.Errorf("unexpected status %d when downloading image", resp.StatusCode)}
-			return
-		}
-
-		data, err := io.ReadAll(resp.Body)
-		ch <- result{data: data, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case r := <-ch:
-		return r.data, r.err
-	}
-}
-
-
-func (c *Client) infer(ctx context.Context, imageBytes []byte) (*domain.RoboflowResponse, error) {
-	encoded := base64.StdEncoding.EncodeToString(imageBytes)
-
+func (c *Client) infer(ctx context.Context, imageURL string) (*domain.RoboflowResponse, error) {
 	url := fmt.Sprintf(
-		"https://detect.roboflow.com/%s?api_key=%s",
-		c.model,
-		c.apiKey,
+		"https://detect.roboflow.com/infer/workflows/%s/%s",
+		c.workspaceID,
+		c.workflowID,
 	)
 
-	body := bytes.NewReader([]byte(encoded))
+	reqBody := inferRequest{
+		APIKey: c.apiKey,
+		Inputs: inferInputs{
+			Image: inferImage{
+				Type:  "url",
+				Value: imageURL,
+			},
+		},
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
