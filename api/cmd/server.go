@@ -13,6 +13,7 @@ import (
 	routes "govision/api/internal/routes"
 	rabbitmqConn "govision/api/services/rabbitmq"
 
+	auth "govision/api/internal/modules/auth"
 	file "govision/api/internal/modules/file"
 	job "govision/api/internal/modules/job"
 	postgresConn "govision/api/services/postgres"
@@ -34,6 +35,11 @@ func main() {
 		panic("DATABASE_URL not found.")
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		panic("JWT_SECRET not found.")
+	}
+
 	db, err := postgresConn.NewConnection(databaseURL)
 	if err != nil {
 		log.Fatalf("[ERROR] - Failed to connect to PostgreSQL: %v", err)
@@ -48,7 +54,8 @@ func main() {
 
 	fileHandler := file.NewHandler(publisher)
 	jobHandler := job.NewHandler(db)
-	routes.InitRoutes(e, fileHandler, jobHandler)
+	authHandler := auth.NewHandler(db, jwtSecret)
+	routes.InitRoutes(e, fileHandler, jobHandler, authHandler)
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      e,
