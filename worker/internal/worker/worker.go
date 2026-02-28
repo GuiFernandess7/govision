@@ -78,7 +78,7 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		Predictions: result.Predictions,
 	}
 
-	if err := w.repo.SaveJobResult(ctx, jobResult); err != nil {
+	if err := w.repo.SaveJobResult(jobResult); err != nil {
 		log.Printf("[WORKER] - Job %s: failed to save results to database: %v", job.JobID, err)
 		_ = msg.Nack(false, true)
 		return

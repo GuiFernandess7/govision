@@ -47,16 +47,19 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// PostgreSQL connection
-	pool, err := pgconn.NewConnection(ctx, databaseURL)
+	// PostgreSQL connection via GORM
+	db, err := pgconn.NewConnection(databaseURL)
 	if err != nil {
 		log.Printf("[ERROR] - PostgreSQL connection error: %v", err)
 		panic(err)
 	}
-	defer pool.Close()
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
 
 	// Repository
-	predictionRepo := postgres.NewPredictionRepository(pool)
+	predictionRepo := postgres.NewPredictionRepository(db)
 
 	// RabbitMQ connection
 	rabbitMQConnection, err := rabbitmq.NewRabbittMQConnection(rabbitConnString)

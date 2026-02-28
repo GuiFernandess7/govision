@@ -1,12 +1,13 @@
 package postgres
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const (
@@ -14,37 +15,32 @@ const (
 	defaultMinConns    = 1
 	defaultMaxConnLife = 30 * time.Minute
 	defaultMaxConnIdle = 5 * time.Minute
-	defaultHealthCheck = 1 * time.Minute
-	defaultConnTimeout = 5 * time.Second
 )
 
-// NewConnection creates a connection pool to PostgreSQL using pgxpool.
-// It validates the connection with a ping before returning.
-func NewConnection(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+// NewConnection creates a GORM database connection to PostgreSQL.
+// It configures the underlying connection pool and validates with a ping.
+func NewConnection(databaseURL string) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Warn),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	cfg.MaxConns = defaultMaxConns
-	cfg.MinConns = defaultMinConns
-	cfg.MaxConnLifetime = defaultMaxConnLife
-	cfg.MaxConnIdleTime = defaultMaxConnIdle
-	cfg.HealthCheckPeriod = defaultHealthCheck
-
-	connCtx, cancel := context.WithTimeout(ctx, defaultConnTimeout)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(connCtx, cfg)
+	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	if err := pool.Ping(connCtx); err != nil {
-		pool.Close()
+	sqlDB.SetMaxOpenConns(int(defaultMaxConns))
+	sqlDB.SetMaxIdleConns(int(defaultMinConns))
+	sqlDB.SetConnMaxLifetime(defaultMaxConnLife)
+	sqlDB.SetConnMaxIdleTime(defaultMaxConnIdle)
+
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Println("[POSTGRES] - Connection pool established successfully")
-	return pool, nil
+	log.Println("[POSTGRES] - Connection established successfully via GORM")
+	return db, nil
 }
