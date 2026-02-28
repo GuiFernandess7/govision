@@ -21,6 +21,26 @@ func NewPredictionRepository(db *gorm.DB) repository.PredictionRepository {
 	return &PredictionRepository{db: db}
 }
 
+// CreatePendingJob inserts a new job with status "pending" before processing begins.
+// Uses ON CONFLICT to avoid duplicates if the job already exists.
+func (r *PredictionRepository) CreatePendingJob(jobID string, imageURL string) error {
+	job := domain.Job{
+		JobID:    jobID,
+		ImageURL: imageURL,
+		Status:   "pending",
+	}
+
+	if err := r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "job_id"}},
+		DoNothing: true,
+	}).Create(&job).Error; err != nil {
+		return err
+	}
+
+	log.Printf("[POSTGRES] - Job %s created with status 'pending'", jobID)
+	return nil
+}
+
 // SaveJobResult persists a completed job and all its predictions in a single
 // database transaction. If any step fails, the entire operation is rolled back.
 func (r *PredictionRepository) SaveJobResult(result domain.JobResult) error {

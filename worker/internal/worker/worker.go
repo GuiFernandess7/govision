@@ -57,6 +57,12 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 
 	log.Printf("[WORKER] - Processing job %s | Image: %s", job.JobID, job.ImageURL)
 
+	if err := w.repo.CreatePendingJob(job.JobID, job.ImageURL); err != nil {
+		log.Printf("[WORKER] - Job %s: failed to create pending job: %v", job.JobID, err)
+		_ = msg.Nack(false, true)
+		return
+	}
+
 	result, err := w.roboflow.Detect(ctx, job.ImageURL)
 	if err != nil {
 		var apiErr *roboflow.APIError
