@@ -35,7 +35,10 @@ The decoupled architecture enables multiple workers to consume the queue and pro
 - **Language**: Go 1.23+
 - **HTTP Framework**: Echo v4
 - **Message Broker**: RabbitMQ (amqp091-go)
+- **Database**: PostgreSQL (GORM)
+- **Authentication**: JWT (golang-jwt/v5) + Refresh Token Rotation
 - **Storage**: ImgBB API (HTTP-based)
+- **ML Inference**: Roboflow Workflows API
 - **ID Management**: ULID (Universally Unique Lexicographically Sortable Identifier)
 
 ### Core Components
@@ -69,14 +72,21 @@ The decoupled architecture enables multiple workers to consume the queue and pro
        │  (Consumer)      │
        └──────┬──────────┘
               │
-              ├──► Download image from URL
+              ├──► Create pending job (PostgreSQL)
               │
-              └──► Send to Roboflow API
+              └──► Send image URL to Roboflow Workflows API
                      │
                      ▼
               ┌──────────────────┐
               │  Detection       │
               │  Results (JSON)  │
+              └──────┬───────────┘
+                     │
+                     ▼
+              ┌──────────────────┐
+              │  PostgreSQL      │
+              │  (jobs +         │
+              │   predictions)   │
               └──────────────────┘
 ```
 
@@ -106,13 +116,76 @@ The decoupled architecture enables multiple workers to consume the queue and pro
 
 ## API Endpoints
 
-### `POST /v1/image/upload`
+### Authentication
+
+#### `POST /v1/auth/register`
+
+Register a new user.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "SecurePass1"}'
+```
+
+**Response (201 Created):**
+```json
+{"message": "User registered successfully"}
+```
+
+#### `POST /v1/auth/login`
+
+Authenticate and receive tokens.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "SecurePass1"}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "a1b2c3d4e5f6...",
+  "expires_in": 900
+}
+```
+
+#### `POST /v1/auth/refresh`
+
+Refresh an expired access token.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "a1b2c3d4e5f6..."}'
+```
+
+**Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "f6e5d4c3b2a1...",
+  "expires_in": 900
+}
+```
+
+### Protected Routes
+
+All routes below require `Authorization: Bearer <access_token>` header.
+
+#### `POST /v1/image/upload`
 
 Upload an image for processing.
 
 **Request:**
 ```bash
 curl -X POST http://localhost:8080/v1/image/upload \
+  -H "Authorization: Bearer <access_token>" \
   -F "file=@image.jpg"
 ```
 
@@ -124,10 +197,37 @@ curl -X POST http://localhost:8080/v1/image/upload \
 }
 ```
 
-**Possible Errors:**
-- `400 Bad Request`: Invalid file, too large, or unsupported type
-- `500 Internal Server Error`: Storage or processing error
-- `502 Bad Gateway`: Failed to communicate with storage service
+#### `GET /v1/jobs/:id`
+
+Query job status and detection results.
+
+**Request:**
+```bash
+curl http://localhost:8080/v1/jobs/01JCXA1B2C3D4E5F6G7H8J9K0M \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**Response (200 OK):**
+```json
+{
+  "job_id": "01JCXA1B2C3D4E5F6G7H8J9K0M",
+  "image_url": "https://i.ibb.co/abc123/image.jpg",
+  "status": "completed",
+  "processed_at": "2026-02-28T20:10:55Z",
+  "created_at": "2026-02-28T20:10:50Z",
+  "predictions": [
+    {
+      "x": 212.02,
+      "y": 49.53,
+      "width": 65.06,
+      "height": 70.18,
+      "confidence": 0.77,
+      "class": "apple",
+      "class_id": 1
+    }
+  ]
+}
+```
 
 ---
 
@@ -141,6 +241,9 @@ Create a `.env` file in the project root:
 # Server
 API_PORT=8080
 
+# Authentication
+JWT_SECRET=your_jwt_secret_here
+
 # Storage (ImgBB)
 STORAGE_API_KEY=your_imgbb_api_key_here
 
@@ -148,9 +251,13 @@ STORAGE_API_KEY=your_imgbb_api_key_here
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 RABBITMQ_QUEUE=image_jobs
 
+# Database (PostgreSQL)
+DATABASE_URL=postgresql://user:password@localhost:5432/govision?sslmode=disable
+
 # Roboflow (Object Detection)
 ROBOFLOW_API_KEY=your_roboflow_api_key_here
-ROBOFLOW_MODEL=your-project/1
+ROBOFLOW_WORKSPACE_ID=your_workspace_id
+ROBOFLOW_WORKFLOW_ID=your_workflow_id
 ```
 
 ### Dependencies
@@ -206,24 +313,42 @@ govision/
 ├── go.sum
 ├── LICENSE
 ├── README.md
+├── migrations/
+│   ├── 001_create_tables.sql     # Jobs & predictions tables
+│   └── 002_create_auth_tables.sql# Users & refresh tokens tables
 ├── api/
 │   ├── cmd/
 │   │   └── server.go             # API entry point
 │   ├── internal/
 │   │   ├── middlewares/
-│   │   │   └── security.go       # HTTP security middlewares
+│   │   │   ├── security.go       # HTTP security middlewares
+│   │   │   └── jwt.go            # JWT authentication middleware
 │   │   ├── modules/
-│   │   │   └── file/
-│   │   │       ├── handler.go    # HTTP handler
-│   │   │       ├── service.go    # Upload business logic
-│   │   │       ├── types.go      # DTOs
-│   │   │       └── validator.go  # File validations
+│   │   │   ├── auth/
+│   │   │   │   ├── handler.go    # Auth HTTP handlers
+│   │   │   │   ├── repository.go # User & token persistence
+│   │   │   │   ├── service.go    # Auth business logic (JWT + bcrypt)
+│   │   │   │   ├── types.go      # Auth models & DTOs
+│   │   │   │   └── validator.go  # Input validations
+│   │   │   ├── file/
+│   │   │   │   ├── handler.go    # Upload HTTP handler
+│   │   │   │   ├── service.go    # Upload business logic
+│   │   │   │   ├── types.go      # DTOs
+│   │   │   │   └── validator.go  # File validations
+│   │   │   └── job/
+│   │   │       ├── handler.go    # Job status HTTP handler
+│   │   │       ├── repository.go # Job query persistence
+│   │   │       ├── service.go    # Job query business logic
+│   │   │       └── types.go      # Job models & DTOs
 │   │   └── routes/
 │   │       └── routes.go         # Route definitions
 │   ├── pkg/
 │   │   └── utils/
 │   │       └── sendRequest.go    # HTTP request utility
 │   └── services/
+│       ├── postgres/
+│       │   ├── migrations.go     # Auto-migration runner
+│       │   └── postgres.go       # PostgreSQL connection (GORM)
 │       ├── rabbitmq/
 │       │   ├── connection.go     # RabbitMQ connection
 │       │   ├── interface.go      # Publisher interface
@@ -236,13 +361,20 @@ govision/
     └── internal/
         ├── domain/
         │   ├── job.go            # Job message type
+        │   ├── models.go         # Database models (GORM)
         │   └── prediction.go     # Roboflow response types
+        ├── repository/
+        │   ├── repository.go     # Repository interface
+        │   └── postgres/
+        │       └── prediction_repository.go # PostgreSQL implementation
         ├── services/
+        │   ├── postgres/
+        │   │   └── postgres.go   # PostgreSQL connection (GORM)
         │   ├── rabbitmq/
-        │   │   ├── connection.go # RabbitMQ connection
+        │   │   ├── connection.go  # RabbitMQ connection
         │   │   └── consumer.go   # Queue consumer
         │   └── roboflow/
-        │       └── roboflow.go   # Roboflow API client
+        │       └── roboflow.go   # Roboflow Workflows API client
         └── worker/
             └── worker.go         # Job processing logic
 ```
@@ -270,10 +402,13 @@ When an upload succeeds, the API publishes a message in the format:
 ## Pipeline Roadmap
 
 1. ✅ **Upload API** — Image reception, validation, storage and job enqueueing
-2. ✅ **Processing Worker** — RabbitMQ consumer with Roboflow integration
-3. ⏳ **Results API** — Query job status and detection results
-4. ⏳ **Results Storage** — Persist detections (PostgreSQL/MongoDB)
-5. ⏳ **Dashboard** — Web interface for results visualization
+2. ✅ **Processing Worker** — RabbitMQ consumer with Roboflow Workflows API integration
+3. ✅ **Results Storage** — PostgreSQL persistence for jobs and predictions (GORM)
+4. ✅ **Results API** — Query job status and detection results (`GET /v1/jobs/:id`)
+5. ✅ **Database Migrations** — Auto-executed SQL migrations on API startup
+6. ✅ **JWT Authentication** — Access tokens (15min) + refresh token rotation (7 days)
+7. ⏳ **Dashboard** — Web interface for results visualization
+8. ⏳ **Docker** — Containerized deployment with docker-compose
 
 The event-driven architecture allows each service to be developed, tested, and scaled independently.
 
