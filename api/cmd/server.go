@@ -14,6 +14,8 @@ import (
 	rabbitmqConn "govision/api/services/rabbitmq"
 
 	file "govision/api/internal/modules/file"
+	job "govision/api/internal/modules/job"
+	postgresConn "govision/api/services/postgres"
 )
 
 func main() {
@@ -27,11 +29,22 @@ func main() {
 
 	publisher := rabbitmqConn.PublisherFactory()
 
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		panic("DATABASE_URL not found.")
+	}
+
+	db, err := postgresConn.NewConnection(databaseURL)
+	if err != nil {
+		log.Fatalf("[ERROR] - Failed to connect to PostgreSQL: %v", err)
+	}
+
 	e := echo.New()
 	e = middlewares.ApplySecurityMiddlewares(e)
 
 	fileHandler := file.NewHandler(publisher)
-	routes.InitRoutes(e, fileHandler)
+	jobHandler := job.NewHandler(db)
+	routes.InitRoutes(e, fileHandler, jobHandler)
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      e,
