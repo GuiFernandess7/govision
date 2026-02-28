@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoVision - Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h1>GoVision</h1>
+        </div>
+        <div class="nav-actions">
+            <span id="userEmail" class="user-email"></span>
+            <button id="logoutBtn" class="btn btn-outline" aria-label="Sign out">Logout</button>
+        </div>
+    </nav>
+
+    <main class="dashboard">
+        <!-- Upload Section -->
+        <section class="upload-section">
+            <div class="upload-area" id="dropZone" role="button" tabindex="0" aria-label="Drop zone: click or drag images here">
+                <div class="upload-icon" aria-hidden="true">📁</div>
+                <p>Drag & drop images here or <label for="fileInput" class="file-label">browse</label></p>
+                <p class="upload-hint">JPEG, PNG or GIF — Max 5MB each</p>
+                <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/gif" hidden>
+            </div>
+            <div id="filePreview" class="file-preview" hidden>
+                <div id="fileList" class="file-list"></div>
+                <button id="uploadBtn" class="btn btn-primary">Upload All</button>
+            </div>
+        </section>
+
+        <!-- Jobs Table -->
+        <section class="jobs-section">
+            <h2>Jobs <span id="jobCount" class="badge">0</span></h2>
+            <div class="table-wrapper">
+                <table class="jobs-table">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>File</th>
+                            <th>Status</th>
+                            <th>Objects</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobsBody"></tbody>
+                </table>
+                <p id="emptyState" class="empty-state" role="status" aria-live="polite">No jobs yet. Upload images to get started.</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for viewing annotated image -->
+    <!-- <div id="imageModal" class="modal" role="dialog" aria-modal="true" aria-label="Annotated image preview" hidden>
+        <div class="modal-content">
+            <button class="modal-close" id="modalClose" aria-label="Close modal">&times;</button>
+            <canvas id="modalCanvas"></canvas>
+            <div class="modal-actions">
+                <button id="downloadBtn" class="btn btn-primary">Download Annotated Image</button>
+            </div>
+        </div>
+    </div> -->
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
