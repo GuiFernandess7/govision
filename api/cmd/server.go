@@ -39,6 +39,10 @@ func main() {
 		log.Fatalf("[ERROR] - Failed to connect to PostgreSQL: %v", err)
 	}
 
+	if err := postgresConn.RunMigrations(db, "migrations"); err != nil {
+		log.Fatalf("[ERROR] - Failed to run migrations: %v", err)
+	}
+
 	e := echo.New()
 	e = middlewares.ApplySecurityMiddlewares(e)
 

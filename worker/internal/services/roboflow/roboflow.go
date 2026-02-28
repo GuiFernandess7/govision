@@ -66,7 +66,12 @@ func (c *Client) Detect(ctx context.Context, imageURL string) (*domain.RoboflowR
 		return nil, fmt.Errorf("roboflow inference failed: %w", err)
 	}
 
-	log.Printf("[ROBOFLOW] - Inference completed. %d prediction(s) returned.", len(result.Predictions))
+	predCount := 0
+	if len(result.Outputs) > 0 {
+		predCount = len(result.Outputs[0].Predictions.Predictions)
+	}
+
+	log.Printf("[ROBOFLOW] - Inference completed. %d prediction(s) returned.", predCount)
 	return result, nil
 }
 
@@ -117,6 +122,8 @@ func (c *Client) infer(ctx context.Context, imageURL string) (*domain.RoboflowRe
 	if err := json.Unmarshal(respBytes, &roboflowResp); err != nil {
 		return nil, fmt.Errorf("failed to decode roboflow response: %w", err)
 	}
+
+	fmt.Printf("RESULT RAW: %+v", roboflowResp)
 
 	return &roboflowResp, nil
 }

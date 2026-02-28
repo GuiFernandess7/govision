@@ -59,7 +59,7 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 
 	if err := w.repo.CreatePendingJob(job.JobID, job.ImageURL); err != nil {
 		log.Printf("[WORKER] - Job %s: failed to create pending job: %v", job.JobID, err)
-		_ = msg.Nack(false, true)
+		_ = msg.Nack(false, false)
 		return
 	}
 
@@ -76,22 +76,31 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		return
 	}
 
+	if len(result.Outputs) == 0 {
+		log.Printf("[WORKER] - Job %s: empty outputs from Roboflow", job.JobID)
+		_ = msg.Nack(false, false)
+		return
+	}
+
+	output := result.Outputs[0]
+
 	jobResult := domain.JobResult{
-		JobID:       job.JobID,
-		ImageURL:    job.ImageURL,
-		Status:      "completed",
-		ProcessedAt: time.Now(),
-		Predictions: result.Predictions,
+		JobID:        job.JobID,
+		ImageURL:     job.ImageURL,
+		Status:       "completed",
+		ProcessedAt:  time.Now(),
+		CountObjects: output.CountObjects,
+		Predictions:  output.Predictions.Predictions,
 	}
 
 	if err := w.repo.SaveJobResult(jobResult); err != nil {
 		log.Printf("[WORKER] - Job %s: failed to save results to database: %v", job.JobID, err)
-		_ = msg.Nack(false, true)
+		_ = msg.Nack(false, false)
 		return
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
-	log.Printf("[WORKER] - Job %s completed and saved. Result:\n%s", job.JobID, string(resultJSON))
+	//resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	log.Printf("[WORKER] - Job %s completed and saved.", job.JobID)
 
 	_ = msg.Ack(false)
 }
