@@ -30,10 +30,6 @@ const dom = Object.freeze({
     emptyState:  $("emptyState"),
     userEmail:   $("userEmail"),
     logoutBtn:   $("logoutBtn"),
-    modal:       $("imageModal"),
-    canvas:      $("modalCanvas"),
-    modalClose:  $("modalClose"),
-    downloadBtn: $("downloadBtn"),
 });
 
 // ── Application state ────────────────────────────────────────
@@ -44,8 +40,8 @@ let selectedFiles = [];
 /** @type {number | null} */
 let pollTimerId = null;
 
-/** @type {string | null} */
-let currentModalJobId = null;
+/** @type {Set<string>} */
+const expandedJobs = new Set();
 
 /** @type {Map<string, JobEntry>} */
 const jobs = new Map();
@@ -77,10 +73,6 @@ dom.dropZone.addEventListener("drop", onDrop);
 dom.fileInput.addEventListener("change", onFileInputChange);
 dom.uploadBtn.addEventListener("click", onUploadAll);
 dom.jobsBody.addEventListener("click", onJobsTableClick);
-dom.modalClose.addEventListener("click", closeModal);
-dom.modal.addEventListener("click", (e) => { if (e.target === dom.modal) closeModal(); });
-dom.downloadBtn.addEventListener("click", onModalDownload);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !dom.modal.hidden) closeModal(); });
 window.addEventListener("beforeunload", stopPolling);
 
 // ── File selection ───────────────────────────────────────────
@@ -332,18 +324,141 @@ function renderJobs() {
     const fragment = document.createDocumentFragment();
 
     for (const job of entries) {
+        const isCompleted = job.status === "completed";
+        const isExpanded = expandedJobs.has(job.id);
+
+        // Main row
         const tr = document.createElement("tr");
+        if (isCompleted) {
+            tr.className = `job-row-clickable${isExpanded ? " expanded" : ""}`;
+            tr.dataset.jobId = job.id;
+            tr.title = "Click to view results";
+        }
         tr.append(
             createCell(createMonoSpan(job.isTemp ? "..." : job.id, TRUNCATE_ID)),
             createCell(createTruncatedSpan(job.fileName, TRUNCATE_FILE, "file-name")),
             createCell(createStatusBadge(job.status)),
-            createTextCell(job.status === "completed" ? String(job.predictions.length) : "\u2014"),
-            createResultCell(job),
+            createTextCell(isCompleted ? String(job.predictions.length) : "\u2014"),
         );
         fragment.appendChild(tr);
+
+        // Detail row (only for completed jobs)
+        if (isCompleted) {
+            const detailTr = document.createElement("tr");
+            detailTr.className = `job-detail-row${isExpanded ? " open" : ""}`;
+            detailTr.id = `detail-${job.id}`;
+
+            const detailTd = document.createElement("td");
+            detailTd.colSpan = 4;
+
+            if (isExpanded) {
+                buildDetailContent(detailTd, job);
+            }
+
+            detailTr.appendChild(detailTd);
+            fragment.appendChild(detailTr);
+        }
     }
 
     dom.jobsBody.appendChild(fragment);
+}
+
+/** Builds the expanded detail panel inside the given td. */
+function buildDetailContent(td, job) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "job-detail-content";
+
+    // Left side — image with bounding boxes
+    const imageDiv = document.createElement("div");
+    imageDiv.className = "job-detail-image";
+
+    const canvas = document.createElement("canvas");
+    imageDiv.appendChild(canvas);
+
+    if (job.imageUrl) {
+        loadImage(job.imageUrl)
+            .then((img) => drawBoundingBoxes(canvas, img, job.predictions))
+            .catch(() => {
+                canvas.style.display = "none";
+                const err = document.createElement("p");
+                err.textContent = "Unable to load image.";
+                err.style.color = "var(--text-muted)";
+                imageDiv.appendChild(err);
+            });
+    }
+
+    // Right side — stats
+    const statsDiv = document.createElement("div");
+    statsDiv.className = "job-detail-stats";
+
+    // Total objects card
+    const totalCard = document.createElement("div");
+    totalCard.className = "stat-card";
+    const totalValue = document.createElement("div");
+    totalValue.className = "stat-value";
+    totalValue.textContent = String(job.predictions.length);
+    const totalLabel = document.createElement("div");
+    totalLabel.className = "stat-label";
+    totalLabel.textContent = "Objects Detected";
+    totalCard.append(totalValue, totalLabel);
+    statsDiv.appendChild(totalCard);
+
+    // Class breakdown
+    const classCounts = {};
+    for (const p of job.predictions) {
+        const cls = String(p.class || "object");
+        classCounts[cls] = (classCounts[cls] || 0) + 1;
+    }
+
+    if (Object.keys(classCounts).length > 0) {
+        const breakdownCard = document.createElement("div");
+        breakdownCard.className = "stat-card";
+
+        const breakdownLabel = document.createElement("div");
+        breakdownLabel.className = "stat-label";
+        breakdownLabel.style.marginBottom = "0.5rem";
+        breakdownLabel.textContent = "By class";
+        breakdownCard.appendChild(breakdownLabel);
+
+        const ul = document.createElement("ul");
+        ul.className = "class-list";
+
+        const sortedClasses = Object.entries(classCounts).sort((a, b) => b[1] - a[1]);
+        for (const [cls, count] of sortedClasses) {
+            const li = document.createElement("li");
+
+            const nameSpan = document.createElement("span");
+            const dot = document.createElement("span");
+            dot.className = "class-dot";
+            const classId = job.predictions.find((p) => String(p.class || "object") === cls)?.class_id || 0;
+            dot.style.backgroundColor = BOX_COLORS[Math.abs(Number(classId)) % BOX_COLORS.length];
+            nameSpan.append(dot, cls);
+
+            const countSpan = document.createElement("span");
+            countSpan.className = "class-count";
+            countSpan.textContent = String(count);
+
+            li.append(nameSpan, countSpan);
+            ul.appendChild(li);
+        }
+
+        breakdownCard.appendChild(ul);
+        statsDiv.appendChild(breakdownCard);
+    }
+
+    // Download button
+    const dlBtn = document.createElement("button");
+    dlBtn.type = "button";
+    dlBtn.className = "btn btn-sm btn-primary detail-download-btn";
+    dlBtn.textContent = "Download Image";
+    dlBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        downloadCanvas(canvas, job.id);
+    });
+    statsDiv.appendChild(dlBtn);
+
+    wrapper.append(imageDiv, statsDiv);
+    td.appendChild(wrapper);
 }
 
 /** @returns {HTMLTableCellElement} */
@@ -399,33 +514,32 @@ function createStatusBadge(status) {
     return badge;
 }
 
-/** @returns {HTMLTableCellElement} */
-function createResultCell(job) {
-    const td = document.createElement("td");
-
-    if (job.status === "completed") {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn btn-sm btn-primary view-btn";
-        btn.dataset.id = job.id;
-        btn.textContent = "View";
-        td.appendChild(btn);
-    } else if (job.status === "failed") {
-        const label = document.createElement("span");
-        label.textContent = job.error || "Error";
-        td.appendChild(label);
-    } else {
-        td.textContent = "\u2014";
-    }
-
-    return td;
-}
-
 /** @param {MouseEvent} event */
 function onJobsTableClick(event) {
-    const button = /** @type {HTMLElement} */ (event.target).closest(".view-btn");
-    if (button?.dataset.id) {
-        void showAnnotated(button.dataset.id);
+    const row = /** @type {HTMLElement} */ (event.target).closest(".job-row-clickable");
+    if (!row?.dataset.jobId) return;
+
+    const jobId = row.dataset.jobId;
+    const detailRow = document.getElementById(`detail-${jobId}`);
+    if (!detailRow) return;
+
+    const isOpen = expandedJobs.has(jobId);
+
+    if (isOpen) {
+        expandedJobs.delete(jobId);
+        row.classList.remove("expanded");
+        detailRow.classList.remove("open");
+    } else {
+        expandedJobs.add(jobId);
+        row.classList.add("expanded");
+        detailRow.classList.add("open");
+
+        // Lazy-build detail content on first expand
+        const td = detailRow.querySelector("td");
+        if (td && td.children.length === 0) {
+            const job = jobs.get(jobId);
+            if (job) buildDetailContent(td, job);
+        }
     }
 }
 
@@ -518,32 +632,6 @@ async function autoDownload(jobId) {
     } catch {
         // image may be cross-origin blocked; silently skip
     }
-}
-
-// ── Modal ────────────────────────────────────────────────────
-
-async function showAnnotated(jobId) {
-    const job = jobs.get(jobId);
-    if (!job?.imageUrl) return;
-
-    try {
-        const image = await loadImage(job.imageUrl);
-        drawBoundingBoxes(/** @type {HTMLCanvasElement} */ (dom.canvas), image, job.predictions);
-        currentModalJobId = jobId;
-        dom.modal.hidden = false;
-    } catch {
-        // image load failed; no-op
-    }
-}
-
-function closeModal() {
-    dom.modal.hidden = true;
-    currentModalJobId = null;
-}
-
-function onModalDownload() {
-    if (!currentModalJobId) return;
-    downloadCanvas(/** @type {HTMLCanvasElement} */ (dom.canvas), currentModalJobId);
 }
 
 // ── Utilities ────────────────────────────────────────────────

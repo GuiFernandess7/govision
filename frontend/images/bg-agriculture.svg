@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dcedc8"/>
+      <stop offset="60%" stop-color="#e8f5e9"/>
+      <stop offset="100%" stop-color="#f1f8e9"/>
+    </linearGradient>
+    <linearGradient id="sun-glow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#fff9c4" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#fff9c4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sky -->
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+
+  <!-- Sun glow -->
+  <circle cx="1650" cy="180" r="160" fill="#fff9c4" opacity="0.3"/>
+  <circle cx="1650" cy="180" r="90" fill="#fff9c4" opacity="0.4"/>
+  <circle cx="1650" cy="180" r="50" fill="#ffee58" opacity="0.5"/>
+
+  <!-- Distant mountains/hills -->
+  <path d="M-100 500 Q200 380 500 440 Q700 480 960 420 Q1200 360 1500 410 Q1750 450 2020 390 L2020 1080 L-100 1080Z" fill="#a5d6a7" opacity="0.5"/>
+
+  <!-- Mid-distance rolling crop fields -->
+  <path d="M-100 580 Q150 510 400 555 Q650 600 900 540 Q1150 480 1400 530 Q1650 580 2020 520 L2020 1080 L-100 1080Z" fill="#81c784" opacity="0.6"/>
+
+  <!-- Crop field rows - middle -->
+  <path d="M-100 670 Q250 620 550 650 Q850 680 1100 630 Q1350 580 1650 620 Q1850 650 2020 630 L2020 1080 L-100 1080Z" fill="#66bb6a" opacity="0.6"/>
+
+  <!-- Nearer field -->
+  <path d="M-100 760 Q300 720 650 745 Q1000 770 1300 730 Q1600 690 2020 720 L2020 1080 L-100 1080Z" fill="#4caf50" opacity="0.6"/>
+
+  <!-- Close crop field -->
+  <path d="M-100 840 Q400 810 800 830 Q1200 850 1600 815 Q1800 800 2020 820 L2020 1080 L-100 1080Z" fill="#388e3c" opacity="0.65"/>
+
+  <!-- Closest ground/soil -->
+  <path d="M-100 930 Q480 910 960 925 Q1440 940 2020 915 L2020 1080 L-100 1080Z" fill="#2e7d32" opacity="0.6"/>
+  <path d="M-100 990 Q480 980 960 985 Q1440 990 2020 980 L2020 1080 L-100 1080Z" fill="#1b5e20" opacity="0.5"/>
+
+  <!-- Crop row lines (subtle texture) -->
+  <line x1="0" y1="780" x2="1920" y2="750" stroke="#2e7d32" stroke-width="1" opacity="0.15"/>
+  <line x1="0" y1="810" x2="1920" y2="785" stroke="#2e7d32" stroke-width="1" opacity="0.12"/>
+  <line x1="0" y1="850" x2="1920" y2="830" stroke="#2e7d32" stroke-width="1" opacity="0.1"/>
+  <line x1="0" y1="890" x2="1920" y2="875" stroke="#1b5e20" stroke-width="1" opacity="0.1"/>
+
+  <!-- Tree cluster - left side -->
+  <ellipse cx="150" cy="520" rx="45" ry="55" fill="#2e7d32" opacity="0.6"/>
+  <ellipse cx="200" cy="510" rx="50" ry="60" fill="#388e3c" opacity="0.55"/>
+  <ellipse cx="250" cy="525" rx="40" ry="50" fill="#43a047" opacity="0.5"/>
+  <rect x="190" y="555" width="7" height="25" fill="#5d4037" opacity="0.3"/>
+
+  <!-- Tree cluster - right side -->
+  <ellipse cx="1550" cy="440" rx="40" ry="50" fill="#2e7d32" opacity="0.5"/>
+  <ellipse cx="1600" cy="430" rx="48" ry="58" fill="#388e3c" opacity="0.45"/>
+  <ellipse cx="1640" cy="445" rx="38" ry="48" fill="#43a047" opacity="0.4"/>
+
+  <!-- Single tree - center-left -->
+  <rect x="680" y="555" width="6" height="30" fill="#5d4037" opacity="0.3"/>
+  <ellipse cx="683" cy="540" rx="25" ry="30" fill="#388e3c" opacity="0.5"/>
+
+  <!-- Birds (simple V shapes) -->
+  <path d="M800 200 Q810 190 820 200" fill="none" stroke="#5d4037" stroke-width="2" opacity="0.2"/>
+  <path d="M850 180 Q858 172 866 180" fill="none" stroke="#5d4037" stroke-width="1.5" opacity="0.15"/>
+  <path d="M1200 230 Q1210 220 1220 230" fill="none" stroke="#5d4037" stroke-width="2" opacity="0.18"/>
+</svg>
