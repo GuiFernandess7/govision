@@ -4,7 +4,7 @@ requireAuth();
 
 // ── Constants ────────────────────────────────────────────────
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 14 * 1024 * 1024;
 const MAX_UPLOAD_CONCURRENCY = 3;
 const POLL_INTERVAL_MS = 3_000;
 const TRUNCATE_ID = 22;

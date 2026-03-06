@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024
+const MAX_FILE_SIZE = 15 * 1024 * 1024
 
 func ValidateFileContent(src multipart.File) error {
 	buffer := make([]byte, 512)
