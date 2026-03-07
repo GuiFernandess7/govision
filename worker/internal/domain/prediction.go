@@ -14,20 +14,9 @@ type Prediction struct {
 	ParentID    string  `json:"parent_id"`
 }
 
-// OutputPredictions holds the image metadata and the list of predictions.
-type OutputPredictions struct {
-	Predictions []Prediction `json:"predictions"`
-}
-
-// Output represents a single element in the "outputs" array.
-type Output struct {
-	CountObjects int               `json:"count_objects"`
-	Predictions  OutputPredictions `json:"predictions"`
-}
-
-// RoboflowResponse represents the top-level response from the Roboflow Workflows API.
+// RoboflowResponse represents the top-level response from the Roboflow Serverless API.
 type RoboflowResponse struct {
-	Outputs []Output `json:"outputs"`
+	Predictions []Prediction `json:"predictions"`
 }
 
 // JobResult represents a completed job with its predictions,

@@ -1,19 +1,19 @@
 package roboflow
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"govision/worker/internal/domain"
 )
 
-const defaultTimeout = 30 * time.Second
+const defaultTimeout = 120 * time.Second
 
 // APIError represents a non-retryable HTTP error from the Roboflow API.
 type APIError struct {
@@ -25,33 +25,16 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("roboflow returned status %d: %s", e.StatusCode, e.Body)
 }
 
-// inferRequest represents the JSON body sent to the Roboflow Workflows API.
-type inferRequest struct {
-	APIKey string      `json:"api_key"`
-	Inputs inferInputs `json:"inputs"`
-}
-
-type inferInputs struct {
-	Image inferImage `json:"image"`
-}
-
-type inferImage struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
-
 type Client struct {
-	apiKey      string
-	workspaceID string
-	workflowID  string
-	httpClient  *http.Client
+	apiKey     string
+	model      string
+	httpClient *http.Client
 }
 
-func NewClient(apiKey, workspaceID, workflowID string) *Client {
+func NewClient(apiKey, model string) *Client {
 	return &Client{
-		apiKey:      apiKey,
-		workspaceID: workspaceID,
-		workflowID:  workflowID,
+		apiKey: apiKey,
+		model:  model,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
@@ -66,42 +49,24 @@ func (c *Client) Detect(ctx context.Context, imageURL string) (*domain.RoboflowR
 		return nil, fmt.Errorf("roboflow inference failed: %w", err)
 	}
 
-	predCount := 0
-	if len(result.Outputs) > 0 {
-		predCount = len(result.Outputs[0].Predictions.Predictions)
-	}
+	predCount := len(result.Predictions)
 
 	log.Printf("[ROBOFLOW] - Inference completed. %d prediction(s) returned.", predCount)
 	return result, nil
 }
 
 func (c *Client) infer(ctx context.Context, imageURL string) (*domain.RoboflowResponse, error) {
-	url := fmt.Sprintf(
-		"https://detect.roboflow.com/infer/workflows/%s/%s",
-		c.workspaceID,
-		c.workflowID,
+	endpoint := fmt.Sprintf(
+		"https://serverless.roboflow.com/%s?api_key=%s&image=%s",
+		c.model,
+		c.apiKey,
+		url.QueryEscape(imageURL),
 	)
 
-	reqBody := inferRequest{
-		APIKey: c.apiKey,
-		Inputs: inferInputs{
-			Image: inferImage{
-				Type:  "url",
-				Value: imageURL,
-			},
-		},
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

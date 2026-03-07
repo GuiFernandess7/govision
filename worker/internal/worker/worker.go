@@ -76,21 +76,19 @@ func (w *Worker) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		return
 	}
 
-	if len(result.Outputs) == 0 {
-		log.Printf("[WORKER] - Job %s: empty outputs from Roboflow", job.JobID)
+	if len(result.Predictions) == 0 {
+		log.Printf("[WORKER] - Job %s: no predictions from Roboflow", job.JobID)
 		_ = msg.Nack(false, false)
 		return
 	}
-
-	output := result.Outputs[0]
 
 	jobResult := domain.JobResult{
 		JobID:        job.JobID,
 		ImageURL:     job.ImageURL,
 		Status:       "completed",
 		ProcessedAt:  time.Now(),
-		CountObjects: output.CountObjects,
-		Predictions:  output.Predictions.Predictions,
+		CountObjects: len(result.Predictions),
+		Predictions:  result.Predictions,
 	}
 
 	if err := w.repo.SaveJobResult(jobResult); err != nil {

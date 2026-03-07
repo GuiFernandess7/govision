@@ -41,7 +41,7 @@ func ApplySecurityMiddlewares(e *echo.Echo) *echo.Echo {
 	e.Use(LoggingMiddleware())
 	e.Use(middleware.CORS())
 	e.Use(middleware.Secure())
-	e.Use(middleware.BodyLimit("5M"))
+	e.Use(middleware.BodyLimit("20M"))
 
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
